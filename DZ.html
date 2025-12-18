@@ -99,7 +99,7 @@
         .bottom-left-panel { 
             position: absolute; bottom: 20px; left: 20px; 
             pointer-events: auto; display: flex; flex-direction: column; gap: 8px; 
-            transition: all 0.4s ease; width: 140px;
+            transition: all 0.4s ease; width: 150px;
         }
         .bottom-left-panel .elegant-btn { width: 100%; }
 
@@ -161,6 +161,18 @@
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-track { background: #111; }
         ::-webkit-scrollbar-thumb { background: #444; border-radius: 3px; }
+        
+        /* --- 文件列表样式 --- */
+        #file-list {
+            position: absolute; bottom: 180px; left: 20px; 
+            background: rgba(0,0,0,0.85); border: 1px solid rgba(212,175,55,0.5);
+            padding: 10px; border-radius: 4px; max-height: 150px; 
+            overflow-y: auto; font-size: 10px; color: #aaa; 
+            z-index: 20; width: 200px; display: none;
+        }
+        #file-list-content { max-height: 120px; overflow-y: auto; }
+        .file-item { padding: 2px 0; border-bottom: 1px solid rgba(255,255,255,0.1); }
+        .file-item:last-child { border-bottom: none; }
     </style>
 
     <script type="importmap">
@@ -248,21 +260,28 @@
         </div>
 
         <div class="bottom-left-panel">
-            <label class="elegant-btn">
-                + 上传照片
-                <input type="file" id="file-input" multiple accept="image/*">
-            </label>
+            <button class="elegant-btn" onclick="refreshLocalPhotos()">🔄 扫描本地图片</button>
             <button class="elegant-btn" onclick="openDeleteManager()">▣ 照片库</button>
             <label class="elegant-btn" id="music-upload-label">
                 ♫ 更换音乐
                 <input type="file" id="music-input" accept=".mp3,audio/mpeg">
             </label>
             <button class="elegant-btn" id="toggle-cam-btn" onclick="toggleCameraDisplay()">📷 摄像头</button>
+            
+            <div style="color: #888; font-size: 10px; text-align: center; margin-top: 5px;">
+                已加载: <span id="photo-count">0</span> 张图片
+            </div>
         </div>
     </div>
     
     <div id="gesture-hint" style="position: absolute; bottom: 10px; width: 100%; text-align: center; color: rgba(212,175,55,0.7); font-size: 10px; pointer-events: none; text-shadow: 0 0 5px #000; z-index: 5;">
         正在初始化系统...
+    </div>
+
+    <!-- 文件列表显示 -->
+    <div id="file-list">
+        <div style="color:#d4af37; margin-bottom:5px; font-size:11px; font-weight:bold;">本地图片文件:</div>
+        <div id="file-list-content"></div>
     </div>
 
     <div id="webcam-wrapper">
@@ -335,20 +354,28 @@
             tx.objectStore('photos').add({ id: id, data: base64 });
             return id;
         }
+        
         function loadPhotosFromDB() {
             if(!db) return Promise.resolve([]);
             return new Promise((r) => {
                 db.transaction('photos', "readonly").objectStore('photos').getAll().onsuccess = (e) => r(e.target.result);
             });
         }
-        function deletePhotoFromDB(id) { if(db) db.transaction('photos', "readwrite").objectStore('photos').delete(id); }
-        function clearPhotosDB() { if(db) db.transaction('photos', "readwrite").objectStore('photos').clear(); }
+        
+        function deletePhotoFromDB(id) { 
+            if(db) db.transaction('photos', "readwrite").objectStore('photos').delete(id); 
+        }
+        
+        function clearPhotosDB() { 
+            if(db) db.transaction('photos', "readwrite").objectStore('photos').clear(); 
+        }
         
         function saveMusicToDB(blob) {
             if(!db) return;
             const tx = db.transaction('music', "readwrite");
             tx.objectStore('music').put({ id: 'bgm', data: blob });
         }
+        
         function loadMusicFromDB() {
             if(!db) return Promise.resolve(null);
             return new Promise((r) => {
@@ -361,7 +388,9 @@
         let clock = new THREE.Clock();
         let handLandmarker, videoElement;
         let caneTexture; 
-        let bgmAudio = new Audio(); bgmAudio.loop = true; let isMusicPlaying = false;
+        let bgmAudio = new Audio(); 
+        bgmAudio.loop = true; 
+        let isMusicPlaying = false;
 
         async function init() {
             initThree();
@@ -370,70 +399,318 @@
             createTextures();
             createParticles(); 
             createDust();
-            // 移除原来的 createDefaultPhotos() 调用
             setupPostProcessing();
             setupEvents();
             animate();
 
-            // 修改：在初始化完成后，添加panel-hidden类
+            // 隐藏面板
             setTimeout(() => {
                 const tl = document.querySelector('.top-left-panel');
                 const bl = document.querySelector('.bottom-left-panel');
                 const gest = document.querySelector('.left-gesture-panel');
                 const tr = document.getElementById('top-right-controls');
                 
-                // 确保初始状态是隐藏的
                 tl.classList.add('panel-hidden');
                 bl.classList.add('panel-hidden');
                 gest.classList.add('panel-hidden');
                 tr.classList.add('panel-hidden');
                 
-                // 更新按钮文字
                 document.getElementById('toggle-ui-btn').innerText = "👁 显示界面";
             }, 100);
             
-            // 在初始化完成后尝试播放音乐
+            // 延迟播放音乐
             setTimeout(() => {
                 if(bgmAudio.src && !isMusicPlaying) {
                     toggleMusicPlay();
                 }
-            }, 2000); // 延迟2秒，确保页面完全加载
+            }, 2000);
             
             const loader = document.getElementById('loader');
-            if(loader) { loader.style.opacity = 0; setTimeout(() => loader.remove(), 500); }
+            if(loader) { 
+                loader.style.opacity = 0; 
+                setTimeout(() => loader.remove(), 500); 
+            }
 
             try {
                 await initDB();
                 loadTextConfig(); 
                 
-                // 1. 先加载默认照片（只在数据库为空时加载）
-                const defaultPhotosResult = await createDefaultPhotos();
+                const hint = document.getElementById('gesture-hint');
+                hint.innerText = "正在加载本地图片...";
                 
-                // 2. 从数据库加载所有照片（包括刚保存的默认照片）
-                const savedPhotos = await loadPhotosFromDB();
+                // 1. 自动扫描并加载本地图片
+                const scannedPhotos = await scanLocalImages();
                 
-                // 3. 清空现有的照片
-                photoMeshGroup.clear();
-                particleSystem = particleSystem.filter(p => p.type !== 'PHOTO');
-                
-                // 4. 创建所有照片的3D对象
-                if(savedPhotos && savedPhotos.length > 0) {
-                    console.log(`从数据库加载 ${savedPhotos.length} 张照片`);
-                    savedPhotos.forEach(item => createPhotoTexture(item.data, item.id));
+                if (scannedPhotos.length > 0) {
+                    console.log(`扫描到 ${scannedPhotos.length} 张本地图片`);
+                    hint.innerText = `加载 ${scannedPhotos.length} 张图片...`;
+                    
+                    // 清空现有的3D照片
+                    photoMeshGroup.clear();
+                    particleSystem = particleSystem.filter(p => p.type !== 'PHOTO');
+                    
+                    // 清空数据库并保存新图片
+                    clearPhotosDB();
+                    
+                    // 创建所有照片的3D对象
+                    scannedPhotos.forEach(item => {
+                        const id = savePhotoToDB(item.data);
+                        createPhotoTexture(item.data, id);
+                    });
+                    
+                    hint.innerText = `已加载 ${scannedPhotos.length} 张图片`;
+                    
+                    // 显示文件列表
+                    updateFileList(scannedPhotos);
+                    
                 } else {
-                    console.log("数据库中没有照片");
+                    hint.innerText = "未找到本地图片，请将图片放在同目录下";
+                    console.log("未找到本地图片文件");
+                    
+                    // 尝试从数据库加载缓存的图片
+                    const savedPhotos = await loadPhotosFromDB();
+                    if(savedPhotos && savedPhotos.length > 0) {
+                        console.log(`从缓存加载 ${savedPhotos.length} 张照片`);
+                        hint.innerText = `从缓存加载 ${savedPhotos.length} 张照片`;
+                        
+                        savedPhotos.forEach(item => createPhotoTexture(item.data, item.id));
+                    }
                 }
 
+                // 更新图片计数
+                updatePhotoCount();
+                
+                // 加载音乐
                 const savedMusic = await loadMusicFromDB();
                 if(savedMusic) {
                     bgmAudio.src = URL.createObjectURL(savedMusic);
                     updatePlayBtnUI(false); 
                 }
 
-            } catch(e) { console.warn("Init Warning", e); }
+            } catch(e) { 
+                console.warn("初始化错误:", e);
+                document.getElementById('gesture-hint').innerText = "初始化完成";
+            }
 
             initMediaPipe(); 
             initDraggableTitle(); 
+        }
+
+        // 扫描本地图片文件
+        async function scanLocalImages() {
+            console.log("开始扫描本地图片...");
+            const foundImages = [];
+            const extensions = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp'];
+            
+            // 扫描编号图片：从1到20
+            for (let i = 1; i <= 20; i++) {
+                let imageFound = false;
+                
+                // 尝试不同扩展名
+                for (const ext of extensions) {
+                    const filename = `${i}.${ext}`;
+                    
+                    try {
+                        console.log(`尝试加载: ${filename}`);
+                        const response = await fetch(filename);
+                        
+                        if (response.ok) {
+                            const blob = await response.blob();
+                            if (blob.size < 100) { // 跳过太小的文件
+                                console.log(`跳过: ${filename} (文件太小)`);
+                                continue;
+                            }
+                            
+                            const base64 = await blobToBase64(blob);
+                            foundImages.push({ 
+                                id: `local_${i}_${ext}`,
+                                data: base64,
+                                name: filename,
+                                number: i
+                            });
+                            imageFound = true;
+                            console.log(`✓ 找到图片: ${filename} (${(blob.size/1024).toFixed(1)} KB)`);
+                            break; // 找到就跳出扩展名循环
+                        }
+                    } catch (e) {
+                        // 文件不存在，继续下一个扩展名
+                    }
+                    
+                    // 也尝试大写扩展名
+                    const filenameUpper = `${i}.${ext.toUpperCase()}`;
+                    try {
+                        const response = await fetch(filenameUpper);
+                        if (response.ok) {
+                            const blob = await response.blob();
+                            if (blob.size < 100) continue;
+                            
+                            const base64 = await blobToBase64(blob);
+                            foundImages.push({ 
+                                id: `local_${i}_${ext.toUpperCase()}`,
+                                data: base64,
+                                name: filenameUpper,
+                                number: i
+                            });
+                            imageFound = true;
+                            console.log(`✓ 找到图片: ${filenameUpper}`);
+                            break;
+                        }
+                    } catch (e) {
+                        // 继续
+                    }
+                }
+                
+                if (!imageFound) {
+                    console.log(`未找到图片 ${i}.*`);
+                }
+            }
+            
+            // 如果没有找到编号图片，尝试备用名称
+            if (foundImages.length === 0) {
+                console.log("尝试备用图片名称...");
+                const backupNames = [
+                    'photo.jpg', 'image.jpg', 'pic.jpg', 'img.jpg',
+                    'photo1.jpg', 'photo2.jpg', 'photo3.jpg',
+                    'image1.jpg', 'image2.jpg', 'image3.jpg',
+                    'christmas.jpg', 'tree.jpg', 'snow.jpg', 'gift.jpg'
+                ];
+                
+                for (const name of backupNames) {
+                    try {
+                        const response = await fetch(name);
+                        if (response.ok) {
+                            const blob = await response.blob();
+                            if (blob.size < 100) continue;
+                            
+                            const base64 = await blobToBase64(blob);
+                            const number = parseInt(name.match(/\d+/)?.[0]) || 0;
+                            foundImages.push({ 
+                                id: `local_${name}`,
+                                data: base64,
+                                name: name,
+                                number: number
+                            });
+                            console.log(`找到备用图片: ${name}`);
+                        }
+                    } catch (e) {
+                        // 继续下一个
+                    }
+                }
+            }
+            
+            // 按编号排序
+            foundImages.sort((a, b) => a.number - b.number);
+            
+            console.log(`总共找到 ${foundImages.length} 张图片`);
+            return foundImages;
+        }
+
+        // Blob转Base64
+        function blobToBase64(blob) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = reject;
+                reader.readAsDataURL(blob);
+            });
+        }
+
+        // 刷新本地图片
+        window.refreshLocalPhotos = async function() {
+            const hint = document.getElementById('gesture-hint');
+            hint.innerText = "重新扫描本地图片...";
+            
+            const scannedPhotos = await scanLocalImages();
+            
+            if (scannedPhotos.length === 0) {
+                hint.innerText = "未找到本地图片文件";
+                showUploadToast("未找到图片文件", 2000);
+                return;
+            }
+            
+            // 清空现有的3D照片
+            photoMeshGroup.clear();
+            particleSystem = particleSystem.filter(p => p.type !== 'PHOTO');
+            
+            // 清空数据库并保存新图片
+            clearPhotosDB();
+            
+            // 创建所有照片的3D对象
+            scannedPhotos.forEach(item => {
+                const id = savePhotoToDB(item.data);
+                createPhotoTexture(item.data, id);
+            });
+            
+            // 更新UI
+            updatePhotoCount();
+            updateFileList(scannedPhotos);
+            
+            hint.innerText = `已重新加载 ${scannedPhotos.length} 张图片`;
+            showUploadToast(`成功加载 ${scannedPhotos.length} 张图片`, 2000);
+        };
+
+        // 更新文件列表显示
+        function updateFileList(photos) {
+            const fileList = document.getElementById('file-list');
+            const content = document.getElementById('file-list-content');
+            
+            if (photos.length === 0) {
+                fileList.style.display = 'none';
+                return;
+            }
+            
+            let html = '';
+            photos.forEach((photo, index) => {
+                const size = photo.data.length * 0.75 / 1024; // 估算大小
+                html += `
+                    <div class="file-item">
+                        ${index + 1}. ${photo.name} (${size.toFixed(1)} KB)
+                    </div>
+                `;
+            });
+            
+            content.innerHTML = html;
+            fileList.style.display = 'block';
+        }
+
+        // 显示上传提示
+        function showUploadToast(message, duration = 2000) {
+            const toast = document.createElement('div');
+            toast.style.cssText = `
+                position: fixed; bottom: 100px; right: 20px;
+                background: rgba(0,0,0,0.9); color: #d4af37;
+                padding: 12px 20px; border: 1px solid #d4af37;
+                border-radius: 4px; z-index: 1000; font-family: 'Microsoft YaHei';
+                font-size: 12px; pointer-events: none; backdrop-filter: blur(4px);
+                box-shadow: 0 0 20px rgba(212, 175, 55, 0.3);
+                opacity: 0; transform: translateY(20px);
+                transition: all 0.3s ease;
+            `;
+            
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            
+            // 显示动画
+            setTimeout(() => {
+                toast.style.opacity = '1';
+                toast.style.transform = 'translateY(0)';
+            }, 10);
+            
+            // 隐藏动画
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateY(-20px)';
+                setTimeout(() => toast.remove(), 300);
+            }, duration);
+        }
+
+        // 更新图片计数
+        function updatePhotoCount() {
+            const photoCount = particleSystem.filter(p => p.type === 'PHOTO').length;
+            const countElement = document.getElementById('photo-count');
+            if (countElement) {
+                countElement.textContent = photoCount;
+            }
         }
 
         function initDraggableTitle() {
@@ -447,7 +724,10 @@
                 title.style.transform = 'none'; title.style.left = rect.left + 'px'; title.style.top = rect.top + 'px';
             });
             window.addEventListener('mousemove', (e) => {
-                if(isDragging) { title.style.left = (e.clientX - offset.x) + 'px'; title.style.top = (e.clientY - offset.y) + 'px'; }
+                if(isDragging) { 
+                    title.style.left = (e.clientX - offset.x) + 'px'; 
+                    title.style.top = (e.clientY - offset.y) + 'px'; 
+                }
             });
             window.addEventListener('mouseup', () => { isDragging = false; });
         }
@@ -460,14 +740,12 @@
             const btn = document.getElementById('toggle-ui-btn');
             
             if(tl.classList.contains('panel-hidden')) {
-                // 如果当前是隐藏状态，则显示
                 tl.classList.remove('panel-hidden');
                 bl.classList.remove('panel-hidden');
                 gest.classList.remove('panel-hidden');
                 tr.classList.remove('panel-hidden');
                 btn.innerText = "👁 隐藏界面";
             } else {
-                // 如果当前是显示状态，则隐藏
                 tl.classList.add('panel-hidden');
                 bl.classList.add('panel-hidden');
                 gest.classList.add('panel-hidden');
@@ -479,7 +757,8 @@
         window.toggleCameraDisplay = function() {
             STATE.cameraVisible = !STATE.cameraVisible;
             const cam = document.getElementById('webcam-wrapper');
-            if(STATE.cameraVisible) cam.classList.remove('camera-hidden'); else cam.classList.add('camera-hidden');
+            if(STATE.cameraVisible) cam.classList.remove('camera-hidden'); 
+            else cam.classList.add('camera-hidden');
         }
 
         window.toggleFullScreen = function() {
@@ -492,6 +771,7 @@
                 btn.innerText = "⛶ 全屏显示";
             }
         }
+        
         document.addEventListener('fullscreenchange', () => {
             const btn = document.getElementById('fs-btn');
             if (!document.fullscreenElement) btn.innerText = "⛶ 全屏显示";
@@ -508,7 +788,8 @@
                 document.getElementById('color-picker').value = saved.color || "#fceea7";
                 applyTextConfig(saved.fontKey, saved.line1, saved.line2, saved.size, saved.color);
             } else {
-                document.getElementById('input-line1').value = "Merry"; document.getElementById('input-line2').value = "Christmas";
+                document.getElementById('input-line1').value = "Merry"; 
+                document.getElementById('input-line2').value = "Christmas";
                 applyTextConfig("style1", "Merry", "Christmas", 100, "#fceea7");
             }
         }
@@ -519,7 +800,9 @@
             const l2 = document.getElementById('input-line2').value;
             const s = document.getElementById('slider-fontsize').value;
             const c = document.getElementById('color-picker').value;
-            localStorage.setItem('v16_text_config', JSON.stringify({ fontKey: key, line1: l1, line2: l2, size: s, color: c }));
+            localStorage.setItem('v16_text_config', JSON.stringify({ 
+                fontKey: key, line1: l1, line2: l2, size: s, color: c 
+            }));
             applyTextConfig(key, l1, l2, s, c);
         }
 
@@ -536,13 +819,19 @@
             t1.style.color = color; t2.style.color = color;
             t1.style.webkitTextFillColor = color; t2.style.webkitTextFillColor = color;
             t1.style.background = 'none'; t2.style.background = 'none';
-            if(style.transform.includes('rotate')) { t1.style.transform = style.transform; t2.style.transform = style.transform; }
-            else { t1.style.transform = 'none'; t2.style.transform = 'none'; }
-            t1.style.fontSize = (0.48 * size) + "px"; t2.style.fontSize = (0.48 * size) + "px";
+            if(style.transform.includes('rotate')) { 
+                t1.style.transform = style.transform; 
+                t2.style.transform = style.transform; 
+            } else { 
+                t1.style.transform = 'none'; 
+                t2.style.transform = 'none'; 
+            }
+            t1.style.fontSize = (0.48 * size) + "px"; 
+            t2.style.fontSize = (0.48 * size) + "px";
         }
 
         window.toggleMusicPlay = function() {
-            if(!bgmAudio.src) return alert("请先在左下角上传音乐");
+            if(!bgmAudio.src) return alert("请先上传音乐");
             if(isMusicPlaying) { 
                 bgmAudio.pause(); 
                 isMusicPlaying = false; 
@@ -788,121 +1077,6 @@
             }
         }
 
-        async function createDefaultPhotos() {
-            try {
-                // 检查数据库中是否已有照片
-                const savedPhotos = await loadPhotosFromDB();
-                if(savedPhotos && savedPhotos.length > 0) {
-                    console.log("已有保存的照片，跳过默认照片");
-                    return savedPhotos; // 返回已保存的照片
-                }
-                
-                console.log("开始加载默认照片");
-                
-                const defaultPhotos = [];
-                const photoNumbers = [1, 2, 3, 4, 5];
-                
-                for(const num of photoNumbers) {
-                    try {
-                        // 尝试加载照片
-                        const photoData = await loadDefaultPhoto(num);
-                        if(photoData) {
-                            defaultPhotos.push(photoData);
-                        }
-                    } catch(error) {
-                        console.warn(`照片 ${num} 加载失败:`, error);
-                    }
-                }
-                
-                console.log(`默认照片加载完成，成功加载 ${defaultPhotos.length} 张`);
-                
-                // 如果一张都没加载到，创建一张回退照片
-                if(defaultPhotos.length === 0) {
-                    console.log("没有找到默认照片，创建回退照片");
-                    const fallbackData = createFallbackPhoto();
-                    const id = savePhotoToDB(fallbackData);
-                    defaultPhotos.push({ id, data: fallbackData });
-                }
-                
-                return defaultPhotos;
-                
-            } catch(error) {
-                console.error("创建默认照片时出错:", error);
-                return [];
-            }
-        }
-
-        // 加载单张默认照片并返回数据
-        async function loadDefaultPhoto(number) {
-            return new Promise(async (resolve, reject) => {
-                try {
-                    // 尝试加载图片
-                    const formats = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
-                    let loaded = false;
-                    
-                    for(const format of formats) {
-                        try {
-                            const response = await fetch(`ZP/${number}.${format}`);
-                            if(response.ok) {
-                                const blob = await response.blob();
-                                const reader = new FileReader();
-                                
-                                reader.onload = (ev) => {
-                                    const base64 = ev.target.result;
-                                    const id = savePhotoToDB(base64);
-                                    resolve({ id, data: base64 });
-                                };
-                                
-                                reader.onerror = reject;
-                                reader.readAsDataURL(blob);
-                                loaded = true;
-                                break;
-                            }
-                        } catch(e) {
-                            continue; // 继续尝试下一种格式
-                        }
-                    }
-                    
-                    if(!loaded) {
-                        reject(new Error(`照片 ${number} 不存在`));
-                    }
-                } catch(error) {
-                    reject(error);
-                }
-            });
-        }
-
-        // 创建一张默认的回退照片
-        function createFallbackPhoto() {
-            const canvas = document.createElement('canvas'); 
-            canvas.width = 512; canvas.height = 512;
-            const ctx = canvas.getContext('2d');
-            
-            // 创建渐变背景
-            const gradient = ctx.createLinearGradient(0, 0, 512, 512);
-            gradient.addColorStop(0, '#1a472a');
-            gradient.addColorStop(1, '#0c2d1a');
-            ctx.fillStyle = gradient;
-            ctx.fillRect(0, 0, 512, 512);
-            
-            // 添加边框
-            ctx.strokeStyle = '#d4af37';
-            ctx.lineWidth = 10;
-            ctx.strokeRect(20, 20, 472, 472);
-            
-            // 添加文字
-            ctx.font = 'bold 48px Arial';
-            ctx.fillStyle = '#d4af37';
-            ctx.textAlign = 'center';
-            ctx.fillText("Christmas", 256, 220);
-            ctx.font = 'bold 40px Arial';
-            ctx.fillText("Memory", 256, 280);
-            ctx.font = '24px Arial';
-            ctx.fillText("Upload your photos", 256, 340);
-            
-            return canvas.toDataURL('image/jpeg', 0.9);
-        }
-
         function createPhotoTexture(base64, id) {
             const img = new Image();
             img.src = base64;
@@ -1084,20 +1258,6 @@
                 composer.setSize(window.innerWidth, window.innerHeight); 
             });
             
-            document.getElementById('file-input').addEventListener('change', (e) => {
-                const files = e.target.files;
-                if(!files.length) return;
-                Array.from(files).forEach(f => {
-                    const reader = new FileReader();
-                    reader.onload = (ev) => {
-                        const base64 = ev.target.result;
-                        const id = savePhotoToDB(base64);
-                        createPhotoTexture(base64, id);
-                    };
-                    reader.readAsDataURL(f);
-                });
-            });
-            
             document.getElementById('music-input').addEventListener('change', (e) => {
                 const file = e.target.files[0];
                 if (file) {
@@ -1195,6 +1355,7 @@
             composer.render();
         }
 
+        // 启动
         init();
     </script>
 </body>
