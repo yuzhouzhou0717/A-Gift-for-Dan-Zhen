@@ -172,8 +172,8 @@
     <div id="canvas-container"></div>
 
     <div id="title-container">
-        <h1 id="display-line1" class="title-line">丹珍的美好</h1>
-        <h1 id="display-line2" class="title-line">A Present for You</h1>
+        <h1 id="display-line1" class="title-line">Happy Birthday</h1>
+        <h1 id="display-line2" class="title-line">Merry Christmas</h1>
     </div>
 
     <div id="ui-layer">
@@ -493,7 +493,7 @@
                 ctx.fillStyle = '#d4af37';
                 ctx.font = 'bold 24px Arial';
                 ctx.textAlign = 'center';
-                ctx.fillText(`❤️ 记忆 ${index + 1} / ${DANZHEN_MEMORIES.length} ❤️`, 256, 60);
+                ctx.fillText(`❤️ 生日快乐 ❤️`, 256, 60);
                 
                 // 添加文字
                 ctx.fillStyle = '#ffffff';
@@ -639,7 +639,7 @@
                     updatePlayBtnUI(false); 
                 }
                 
-                hint.innerText = "回忆加载完成，使用手势探索吧！";
+                hint.innerText = "加载完成，使用手势探索吧！";
                 
                 // 延迟播放音乐
                 setTimeout(() => {
@@ -793,16 +793,16 @@
         function loadTextConfig() {
             const saved = JSON.parse(localStorage.getItem('v16_text_config'));
             if(saved) {
-                document.getElementById('input-line1').value = saved.line1 || "丹珍的美好";
-                document.getElementById('input-line2').value = saved.line2 || "A Present for You";
+                document.getElementById('input-line1').value = saved.line1 || "Happy Birthday";
+                document.getElementById('input-line2').value = saved.line2 || "Merry Christmas ";
                 document.getElementById('font-select').value = saved.fontKey || "style3";
-                document.getElementById('slider-fontsize').value = saved.size || 120;
-                document.getElementById('color-picker').value = saved.color || "#ffcccc";
+                document.getElementById('slider-fontsize').value = saved.size || 70;
+                document.getElementById('color-picker').value = saved.color || "#fceea7";
                 applyTextConfig(saved.fontKey, saved.line1, saved.line2, saved.size, saved.color);
             } else {
-                document.getElementById('input-line1').value = "丹珍的美好"; 
-                document.getElementById('input-line2').value = "A Present for You";
-                applyTextConfig("style3", "丹珍的美好", "A Present for You", 120, "#ffcccc");
+                document.getElementById('input-line1').value = "Happy Birthday"; 
+                document.getElementById('input-line2').value = "Merry Christmas ";
+                applyTextConfig("style3", "Happy Birthday", "Merry Christmas", 70, "#fceea7");
             }
         }
 
