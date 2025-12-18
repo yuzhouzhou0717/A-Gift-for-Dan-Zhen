@@ -497,7 +497,7 @@
                 
                 // 添加文字
                 ctx.fillStyle = '#ffffff';
-                ctx.font = 'bold 20px "Microsoft YaHei", sans-serif';
+                ctx.font = 'bold 25px "Microsoft YaHei", sans-serif';
                 ctx.textAlign = 'center';
                 
                 // 分割长文字
@@ -516,7 +516,7 @@
                 if (currentLine) lines.push(currentLine);
                 
                 // 绘制文字
-                const startY = 150;
+                const startY = 200;
                 const lineHeight = 32;
                 
                 lines.forEach((line, i) => {
@@ -585,7 +585,13 @@
                 
                 document.getElementById('toggle-ui-btn').innerText = "👁 显示界面";
             }, 100);
-            
+            // 在初始化完成后尝试播放音乐
+            setTimeout(() => {
+                if(bgmAudio.src && !isMusicPlaying) {
+                    toggleMusicPlay();
+                }
+            }, 2000); // 延迟2秒，确保页面完全加载
+
             const loader = document.getElementById('loader');
             if(loader) { 
                 loader.style.opacity = 0; 
