@@ -561,6 +561,9 @@
         }
 
         async function init() {
+// 先设置音乐
+    bgmAudio.src = 'xx.mp3'; // 确保这个文件在项目根目录
+    bgmAudio.volume = 0.5;
             initThree();
             setupEnvironment(); 
             setupLights();
