@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Grand Luxury Tree v16.4 (Final Layout)</title>
+    <title>A Present for Dan Zhen</title>
     <style>
         /* --- 基础样式 --- */
         body { margin: 0; overflow: hidden; background-color: #000000; font-family: 'Songti SC', 'SimSun', serif; }
@@ -38,7 +38,7 @@
 
         /* --- 标题 (可拖拽) --- */
         #title-container {
-            position: absolute; top: 10%; left: 50%; transform: translateX(-50%);
+            position: absolute; top: 7%; left: 51%; transform: translateX(-50%);
             text-align: center; pointer-events: auto; cursor: move; 
             z-index: 50; transition: color 0.2s; user-select: none; padding: 10px;
         }
@@ -169,7 +169,7 @@
 </head>
 <body>
 
-    <div id="loader"><div class="spinner"></div><div class="loader-text">V16.4 READY</div></div>
+    <div id="loader"><div class="spinner"></div><div class="loader-text">GIFT READY</div></div>
     <div id="canvas-container"></div>
 
     <div id="title-container">
@@ -300,7 +300,7 @@
             focusType: 0, 
             hand: { detected: false, x: 0, y: 0 },
             rotation: { x: 0, y: 0 },
-            uiVisible: true, cameraVisible: true
+            uiVisible: false, cameraVisible: true
         };
 
         const FONT_STYLES = {
@@ -370,11 +370,35 @@
             createTextures();
             createParticles(); 
             createDust();
-            createDefaultPhotos();
+            // 移除原来的 createDefaultPhotos() 调用
             setupPostProcessing();
             setupEvents();
             animate();
 
+            // 修改：在初始化完成后，添加panel-hidden类
+            setTimeout(() => {
+                const tl = document.querySelector('.top-left-panel');
+                const bl = document.querySelector('.bottom-left-panel');
+                const gest = document.querySelector('.left-gesture-panel');
+                const tr = document.getElementById('top-right-controls');
+                
+                // 确保初始状态是隐藏的
+                tl.classList.add('panel-hidden');
+                bl.classList.add('panel-hidden');
+                gest.classList.add('panel-hidden');
+                tr.classList.add('panel-hidden');
+                
+                // 更新按钮文字
+                document.getElementById('toggle-ui-btn').innerText = "👁 显示界面";
+            }, 100);
+            
+            // 在初始化完成后尝试播放音乐
+            setTimeout(() => {
+                if(bgmAudio.src && !isMusicPlaying) {
+                    toggleMusicPlay();
+                }
+            }, 2000); // 延迟2秒，确保页面完全加载
+            
             const loader = document.getElementById('loader');
             if(loader) { loader.style.opacity = 0; setTimeout(() => loader.remove(), 500); }
 
@@ -382,11 +406,22 @@
                 await initDB();
                 loadTextConfig(); 
                 
+                // 1. 先加载默认照片（只在数据库为空时加载）
+                const defaultPhotosResult = await createDefaultPhotos();
+                
+                // 2. 从数据库加载所有照片（包括刚保存的默认照片）
                 const savedPhotos = await loadPhotosFromDB();
+                
+                // 3. 清空现有的照片
+                photoMeshGroup.clear();
+                particleSystem = particleSystem.filter(p => p.type !== 'PHOTO');
+                
+                // 4. 创建所有照片的3D对象
                 if(savedPhotos && savedPhotos.length > 0) {
-                    photoMeshGroup.clear();
-                    particleSystem = particleSystem.filter(p => p.type !== 'PHOTO');
+                    console.log(`从数据库加载 ${savedPhotos.length} 张照片`);
                     savedPhotos.forEach(item => createPhotoTexture(item.data, item.id));
+                } else {
+                    console.log("数据库中没有照片");
                 }
 
                 const savedMusic = await loadMusicFromDB();
@@ -418,15 +453,26 @@
         }
 
         window.toggleUI = function() {
-            STATE.uiVisible = !STATE.uiVisible;
             const tl = document.querySelector('.top-left-panel');
             const bl = document.querySelector('.bottom-left-panel');
             const gest = document.querySelector('.left-gesture-panel');
+            const tr = document.getElementById('top-right-controls');
             const btn = document.getElementById('toggle-ui-btn');
-            if(!STATE.uiVisible) {
-                tl.classList.add('panel-hidden'); bl.classList.add('panel-hidden'); gest.classList.add('panel-hidden'); btn.innerText = "👁 显示界面";
+            
+            if(tl.classList.contains('panel-hidden')) {
+                // 如果当前是隐藏状态，则显示
+                tl.classList.remove('panel-hidden');
+                bl.classList.remove('panel-hidden');
+                gest.classList.remove('panel-hidden');
+                tr.classList.remove('panel-hidden');
+                btn.innerText = "👁 隐藏界面";
             } else {
-                tl.classList.remove('panel-hidden'); bl.classList.remove('panel-hidden'); gest.classList.remove('panel-hidden'); btn.innerText = "👁 隐藏界面";
+                // 如果当前是显示状态，则隐藏
+                tl.classList.add('panel-hidden');
+                bl.classList.add('panel-hidden');
+                gest.classList.add('panel-hidden');
+                tr.classList.add('panel-hidden');
+                btn.innerText = "👁 显示界面";
             }
         }
 
@@ -497,8 +543,13 @@
 
         window.toggleMusicPlay = function() {
             if(!bgmAudio.src) return alert("请先在左下角上传音乐");
-            if(isMusicPlaying) { bgmAudio.pause(); isMusicPlaying = false; } 
-            else { bgmAudio.play(); isMusicPlaying = true; }
+            if(isMusicPlaying) { 
+                bgmAudio.pause(); 
+                isMusicPlaying = false; 
+            } else { 
+                bgmAudio.play(); 
+                isMusicPlaying = true; 
+            }
             updatePlayBtnUI(isMusicPlaying);
         }
 
@@ -559,10 +610,16 @@
             const ctx = canvas.getContext('2d');
             ctx.fillStyle = '#ffffff'; ctx.fillRect(0,0,128,128);
             ctx.fillStyle = '#880000'; ctx.beginPath();
-            for(let i=-128; i<256; i+=32) { ctx.moveTo(i, 0); ctx.lineTo(i+32, 128); ctx.lineTo(i+16, 128); ctx.lineTo(i-16, 0); }
+            for(let i=-128; i<256; i+=32) { 
+                ctx.moveTo(i, 0); 
+                ctx.lineTo(i+32, 128); 
+                ctx.lineTo(i+16, 128); 
+                ctx.lineTo(i-16, 0); 
+            }
             ctx.fill();
             caneTexture = new THREE.CanvasTexture(canvas);
-            caneTexture.wrapS = caneTexture.wrapT = THREE.RepeatWrapping; caneTexture.repeat.set(3, 3);
+            caneTexture.wrapS = caneTexture.wrapT = THREE.RepeatWrapping; 
+            caneTexture.repeat.set(3, 3);
         }
 
         class Particle {
@@ -572,7 +629,11 @@
                 this.baseScale = mesh.scale.x; 
                 this.photoId = null;
                 const speedMult = (type === 'PHOTO') ? 0.3 : 2.0;
-                this.spinSpeed = new THREE.Vector3((Math.random()-0.5)*speedMult, (Math.random()-0.5)*speedMult, (Math.random()-0.5)*speedMult);
+                this.spinSpeed = new THREE.Vector3(
+                    (Math.random()-0.5)*speedMult, 
+                    (Math.random()-0.5)*speedMult, 
+                    (Math.random()-0.5)*speedMult
+                );
                 this.calculatePositions();
             }
 
@@ -588,7 +649,11 @@
                 let rScatter = this.isDust ? (12 + Math.random()*20) : (8 + Math.random()*12);
                 const theta = Math.random() * Math.PI * 2;
                 const phi = Math.acos(2 * Math.random() - 1);
-                this.posScatter.set(rScatter * Math.sin(phi) * Math.cos(theta), rScatter * Math.sin(phi) * Math.sin(theta), rScatter * Math.cos(phi));
+                this.posScatter.set(
+                    rScatter * Math.sin(phi) * Math.cos(theta), 
+                    rScatter * Math.sin(phi) * Math.sin(theta), 
+                    rScatter * Math.cos(phi)
+                );
             }
 
             update(dt, mode, focusTargetMesh) {
@@ -645,12 +710,36 @@
         function createParticles() {
             const sphereGeo = new THREE.SphereGeometry(0.5, 32, 32); 
             const boxGeo = new THREE.BoxGeometry(0.55, 0.55, 0.55); 
-            const curve = new THREE.CatmullRomCurve3([ new THREE.Vector3(0, -0.5, 0), new THREE.Vector3(0, 0.3, 0), new THREE.Vector3(0.1, 0.5, 0), new THREE.Vector3(0.3, 0.4, 0) ]);
+            const curve = new THREE.CatmullRomCurve3([ 
+                new THREE.Vector3(0, -0.5, 0), 
+                new THREE.Vector3(0, 0.3, 0), 
+                new THREE.Vector3(0.1, 0.5, 0), 
+                new THREE.Vector3(0.3, 0.4, 0) 
+            ]);
             const candyGeo = new THREE.TubeGeometry(curve, 16, 0.08, 8, false);
 
-            const goldMat = new THREE.MeshStandardMaterial({ color: CONFIG.colors.champagneGold, metalness: 1.0, roughness: 0.1, envMapIntensity: 2.0, emissive: 0x443300, emissiveIntensity: 0.3 });
-            const greenMat = new THREE.MeshStandardMaterial({ color: CONFIG.colors.deepGreen, metalness: 0.2, roughness: 0.8, emissive: 0x002200, emissiveIntensity: 0.2 });
-            const redMat = new THREE.MeshPhysicalMaterial({ color: CONFIG.colors.accentRed, metalness: 0.3, roughness: 0.2, clearcoat: 1.0, emissive: 0x330000 });
+            const goldMat = new THREE.MeshStandardMaterial({ 
+                color: CONFIG.colors.champagneGold, 
+                metalness: 1.0, 
+                roughness: 0.1, 
+                envMapIntensity: 2.0, 
+                emissive: 0x443300, 
+                emissiveIntensity: 0.3 
+            });
+            const greenMat = new THREE.MeshStandardMaterial({ 
+                color: CONFIG.colors.deepGreen, 
+                metalness: 0.2, 
+                roughness: 0.8, 
+                emissive: 0x002200, 
+                emissiveIntensity: 0.2 
+            });
+            const redMat = new THREE.MeshPhysicalMaterial({ 
+                color: CONFIG.colors.accentRed, 
+                metalness: 0.3, 
+                roughness: 0.2, 
+                clearcoat: 1.0, 
+                emissive: 0x330000 
+            });
             const candyMat = new THREE.MeshStandardMaterial({ map: caneTexture, roughness: 0.4 });
 
             for (let i = 0; i < CONFIG.particles.count; i++) {
@@ -663,32 +752,155 @@
                 else { mesh = new THREE.Mesh(candyGeo, candyMat); type = 'CANE'; }
 
                 const s = 0.4 + Math.random() * 0.5;
-                mesh.scale.set(s,s,s); mesh.rotation.set(Math.random()*6, Math.random()*6, Math.random()*6);
-                mainGroup.add(mesh); particleSystem.push(new Particle(mesh, type, false));
+                mesh.scale.set(s,s,s); 
+                mesh.rotation.set(Math.random()*6, Math.random()*6, Math.random()*6);
+                mainGroup.add(mesh); 
+                particleSystem.push(new Particle(mesh, type, false));
             }
 
-            const star = new THREE.Mesh(new THREE.OctahedronGeometry(1.2, 0), new THREE.MeshStandardMaterial({ color: 0xffdd88, emissive: 0xffaa00, emissiveIntensity: 1.0, metalness: 1.0, roughness: 0 }));
-            star.position.set(0, CONFIG.particles.treeHeight/2 + 1.2, 0); mainGroup.add(star);
+            const star = new THREE.Mesh(
+                new THREE.OctahedronGeometry(1.2, 0), 
+                new THREE.MeshStandardMaterial({ 
+                    color: 0xffdd88, 
+                    emissive: 0xffaa00, 
+                    emissiveIntensity: 1.0, 
+                    metalness: 1.0, 
+                    roughness: 0 
+                })
+            );
+            star.position.set(0, CONFIG.particles.treeHeight/2 + 1.2, 0); 
+            mainGroup.add(star);
             mainGroup.add(photoMeshGroup);
         }
 
         function createDust() {
             const geo = new THREE.TetrahedronGeometry(0.08, 0);
-            const mat = new THREE.MeshBasicMaterial({ color: 0xffeebb, transparent: true, opacity: 0.8 });
-            for(let i=0; i<CONFIG.particles.dustCount; i++) {
-                 const mesh = new THREE.Mesh(geo, mat); mesh.scale.setScalar(0.5 + Math.random());
-                 mainGroup.add(mesh); particleSystem.push(new Particle(mesh, 'DUST', true));
+            const mat = new THREE.MeshBasicMaterial({ 
+                color: 0xffeebb, 
+                transparent: true, 
+                opacity: 0.8 
+            });
+            for(let i = 0; i < CONFIG.particles.dustCount; i++) {
+                const mesh = new THREE.Mesh(geo, mat); 
+                mesh.scale.setScalar(0.5 + Math.random());
+                mainGroup.add(mesh); 
+                particleSystem.push(new Particle(mesh, 'DUST', true));
             }
         }
 
-        function createDefaultPhotos() {
-            const canvas = document.createElement('canvas'); canvas.width = 512; canvas.height = 512;
+        async function createDefaultPhotos() {
+            try {
+                // 检查数据库中是否已有照片
+                const savedPhotos = await loadPhotosFromDB();
+                if(savedPhotos && savedPhotos.length > 0) {
+                    console.log("已有保存的照片，跳过默认照片");
+                    return savedPhotos; // 返回已保存的照片
+                }
+                
+                console.log("开始加载默认照片");
+                
+                const defaultPhotos = [];
+                const photoNumbers = [1, 2, 3, 4, 5];
+                
+                for(const num of photoNumbers) {
+                    try {
+                        // 尝试加载照片
+                        const photoData = await loadDefaultPhoto(num);
+                        if(photoData) {
+                            defaultPhotos.push(photoData);
+                        }
+                    } catch(error) {
+                        console.warn(`照片 ${num} 加载失败:`, error);
+                    }
+                }
+                
+                console.log(`默认照片加载完成，成功加载 ${defaultPhotos.length} 张`);
+                
+                // 如果一张都没加载到，创建一张回退照片
+                if(defaultPhotos.length === 0) {
+                    console.log("没有找到默认照片，创建回退照片");
+                    const fallbackData = createFallbackPhoto();
+                    const id = savePhotoToDB(fallbackData);
+                    defaultPhotos.push({ id, data: fallbackData });
+                }
+                
+                return defaultPhotos;
+                
+            } catch(error) {
+                console.error("创建默认照片时出错:", error);
+                return [];
+            }
+        }
+
+        // 加载单张默认照片并返回数据
+        async function loadDefaultPhoto(number) {
+            return new Promise(async (resolve, reject) => {
+                try {
+                    // 尝试加载图片
+                    const formats = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
+                    let loaded = false;
+                    
+                    for(const format of formats) {
+                        try {
+                            const response = await fetch(`ZP/${number}.${format}`);
+                            if(response.ok) {
+                                const blob = await response.blob();
+                                const reader = new FileReader();
+                                
+                                reader.onload = (ev) => {
+                                    const base64 = ev.target.result;
+                                    const id = savePhotoToDB(base64);
+                                    resolve({ id, data: base64 });
+                                };
+                                
+                                reader.onerror = reject;
+                                reader.readAsDataURL(blob);
+                                loaded = true;
+                                break;
+                            }
+                        } catch(e) {
+                            continue; // 继续尝试下一种格式
+                        }
+                    }
+                    
+                    if(!loaded) {
+                        reject(new Error(`照片 ${number} 不存在`));
+                    }
+                } catch(error) {
+                    reject(error);
+                }
+            });
+        }
+
+        // 创建一张默认的回退照片
+        function createFallbackPhoto() {
+            const canvas = document.createElement('canvas'); 
+            canvas.width = 512; canvas.height = 512;
             const ctx = canvas.getContext('2d');
-            ctx.fillStyle = '#050505'; ctx.fillRect(0,0,512,512);
-            ctx.strokeStyle = '#eebb66'; ctx.lineWidth = 15; ctx.strokeRect(20,20,472,472);
-            ctx.font = '500 60px Times New Roman'; ctx.fillStyle = '#eebb66'; ctx.textAlign = 'center'; 
-            ctx.fillText("JOYEUX", 256, 230); ctx.fillText("NOEL", 256, 300);
-            createPhotoTexture(canvas.toDataURL(), 'default');
+            
+            // 创建渐变背景
+            const gradient = ctx.createLinearGradient(0, 0, 512, 512);
+            gradient.addColorStop(0, '#1a472a');
+            gradient.addColorStop(1, '#0c2d1a');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, 512, 512);
+            
+            // 添加边框
+            ctx.strokeStyle = '#d4af37';
+            ctx.lineWidth = 10;
+            ctx.strokeRect(20, 20, 472, 472);
+            
+            // 添加文字
+            ctx.font = 'bold 48px Arial';
+            ctx.fillStyle = '#d4af37';
+            ctx.textAlign = 'center';
+            ctx.fillText("Christmas", 256, 220);
+            ctx.font = 'bold 40px Arial';
+            ctx.fillText("Memory", 256, 280);
+            ctx.font = '24px Arial';
+            ctx.fillText("Upload your photos", 256, 340);
+            
+            return canvas.toDataURL('image/jpeg', 0.9);
         }
 
         function createPhotoTexture(base64, id) {
@@ -699,20 +911,28 @@
                 tex.colorSpace = THREE.SRGBColorSpace;
                 tex.needsUpdate = true;
                 addPhotoToScene(tex, id, base64);
-            }
+            };
         }
 
         function addPhotoToScene(texture, id, base64) {
             const frameGeo = new THREE.BoxGeometry(1.4, 1.4, 0.05);
-            const frameMat = new THREE.MeshStandardMaterial({ color: CONFIG.colors.champagneGold, metalness: 1.0, roughness: 0.1 });
+            const frameMat = new THREE.MeshStandardMaterial({ 
+                color: CONFIG.colors.champagneGold, 
+                metalness: 1.0, 
+                roughness: 0.1 
+            });
             const frame = new THREE.Mesh(frameGeo, frameMat);
+            
             const photoGeo = new THREE.PlaneGeometry(1.2, 1.2);
             const photoMat = new THREE.MeshBasicMaterial({ map: texture });
             const photo = new THREE.Mesh(photoGeo, photoMat);
             photo.position.z = 0.04;
+            
             const group = new THREE.Group();
-            group.add(frame); group.add(photo);
-            const s = 0.8; group.scale.set(s,s,s);
+            group.add(frame); 
+            group.add(photo);
+            const s = 0.8; 
+            group.scale.set(s,s,s);
             
             photoMeshGroup.add(group);
             const p = new Particle(group, 'PHOTO', false);
@@ -754,19 +974,28 @@
             try {
                 const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm");
                 handLandmarker = await HandLandmarker.createFromOptions(vision, {
-                    baseOptions: { modelAssetPath: `https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`, delegate: "GPU" },
-                    runningMode: "VIDEO", numHands: 1
+                    baseOptions: { 
+                        modelAssetPath: `https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`, 
+                        delegate: "GPU" 
+                    },
+                    runningMode: "VIDEO", 
+                    numHands: 1
                 });
                 hint.innerText = "手势识别就绪";
                 predictWebcam();
-            } catch(e) { console.warn("AI Load Failed:", e); hint.innerText = "AI Failed"; }
+            } catch(e) { 
+                console.warn("AI Load Failed:", e); 
+                hint.innerText = "AI Failed"; 
+            }
         }
 
         function renderWebcamPreview() {
             const canvas = document.getElementById('webcam-canvas');
             const ctx = canvas.getContext('2d', { willReadFrequently: true });
             function draw() {
-                if(videoElement.readyState >= 2) ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+                if(videoElement.readyState >= 2) {
+                    ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+                }
                 requestAnimationFrame(draw);
             }
             draw();
@@ -778,8 +1007,11 @@
                 lastVideoTime = videoElement.currentTime;
                 const result = handLandmarker.detectForVideo(videoElement, performance.now());
                 processGestures(result);
-                if(result.landmarks.length > 0) document.getElementById('cam-status').classList.add('active');
-                else document.getElementById('cam-status').classList.remove('active');
+                if(result.landmarks.length > 0) {
+                    document.getElementById('cam-status').classList.add('active');
+                } else {
+                    document.getElementById('cam-status').classList.remove('active');
+                }
             }
             requestAnimationFrame(predictWebcam);
         }
@@ -793,40 +1025,65 @@
                 STATE.hand.x = (lm[9].x - 0.5) * 2; 
                 STATE.hand.y = (lm[9].y - 0.5) * 2;
 
-                const thumb = lm[4]; const index = lm[8]; const wrist = lm[0];
+                const thumb = lm[4]; 
+                const index = lm[8]; 
+                const wrist = lm[0];
                 const pinchDist = Math.hypot(thumb.x - index.x, thumb.y - index.y);
                 const tips = [lm[8], lm[12], lm[16], lm[20]];
-                let openDist = 0; tips.forEach(t => openDist += Math.hypot(t.x - wrist.x, t.y - wrist.y)); openDist /= 4;
+                let openDist = 0; 
+                tips.forEach(t => openDist += Math.hypot(t.x - wrist.x, t.y - wrist.y)); 
+                openDist /= 4;
 
                 // Immediate switching without buffer
                 if (pinchDist < 0.05) {
                     hint.innerText = "状态: 抓取 / 聚焦";
                     if (STATE.mode !== 'FOCUS') {
-                        let closestPhoto = null; let minScreenDist = Infinity;
+                        let closestPhoto = null; 
+                        let minScreenDist = Infinity;
                         
                         STATE.focusType = Math.floor(Math.random() * 4);
 
                         particleSystem.filter(p => p.type === 'PHOTO').forEach(p => {
                             p.mesh.updateMatrixWorld();
-                            const pos = new THREE.Vector3(); p.mesh.getWorldPosition(pos);
+                            const pos = new THREE.Vector3(); 
+                            p.mesh.getWorldPosition(pos);
                             const screenPos = pos.project(camera); 
                             const dist = Math.hypot(screenPos.x, screenPos.y);
                             if (screenPos.z < 1 && dist < CONFIG.interaction.grabRadius && dist < minScreenDist) {
-                                minScreenDist = dist; closestPhoto = p.mesh;
+                                minScreenDist = dist; 
+                                closestPhoto = p.mesh;
                             }
                         });
-                        if (closestPhoto) { STATE.mode = 'FOCUS'; STATE.focusTarget = closestPhoto; }
+                        if (closestPhoto) { 
+                            STATE.mode = 'FOCUS'; 
+                            STATE.focusTarget = closestPhoto; 
+                        }
                     }
                 } 
-                else if (openDist < 0.25) { STATE.mode = 'TREE'; STATE.focusTarget = null; hint.innerText = "状态: 聚合 (圣诞树)"; } 
-                else if (openDist > 0.4) { STATE.mode = 'SCATTER'; STATE.focusTarget = null; hint.innerText = "状态: 散开 (星云)"; }
+                else if (openDist < 0.25) { 
+                    STATE.mode = 'TREE'; 
+                    STATE.focusTarget = null; 
+                    hint.innerText = "状态: 聚合 (圣诞树)"; 
+                } 
+                else if (openDist > 0.4) { 
+                    STATE.mode = 'SCATTER'; 
+                    STATE.focusTarget = null; 
+                    hint.innerText = "状态: 散开 (星云)"; 
+                }
             } else {
-                STATE.hand.detected = false; hint.innerText = "等待手势...";
+                STATE.hand.detected = false; 
+                hint.innerText = "等待手势...";
             }
         }
 
         window.setupEvents = function() {
-            window.addEventListener('resize', () => { camera.aspect = window.innerWidth/window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); composer.setSize(window.innerWidth, window.innerHeight); });
+            window.addEventListener('resize', () => { 
+                camera.aspect = window.innerWidth/window.innerHeight; 
+                camera.updateProjectionMatrix(); 
+                renderer.setSize(window.innerWidth, window.innerHeight); 
+                composer.setSize(window.innerWidth, window.innerHeight); 
+            });
+            
             document.getElementById('file-input').addEventListener('change', (e) => {
                 const files = e.target.files;
                 if(!files.length) return;
@@ -836,19 +1093,27 @@
                         const base64 = ev.target.result;
                         const id = savePhotoToDB(base64);
                         createPhotoTexture(base64, id);
-                    }
+                    };
                     reader.readAsDataURL(f);
                 });
             });
+            
             document.getElementById('music-input').addEventListener('change', (e) => {
                 const file = e.target.files[0];
                 if (file) {
                     saveMusicToDB(file);
                     bgmAudio.src = URL.createObjectURL(file);
-                    bgmAudio.play().then(() => { isMusicPlaying = true; updatePlayBtnUI(true); }).catch(console.error);
+                    bgmAudio.play().then(() => { 
+                        isMusicPlaying = true; 
+                        updatePlayBtnUI(true); 
+                    }).catch(console.error);
                 }
             });
-            window.addEventListener('keydown', (e) => { if (e.key.toLowerCase() === 'h') window.toggleUI(); });
+            
+            window.addEventListener('keydown', (e) => { 
+                if (e.key.toLowerCase() === 'h') window.toggleUI();
+                if (e.key.toLowerCase() === 'j') toggleFullScreen(); 
+            });
         }
 
         window.openDeleteManager = async function() {
@@ -856,15 +1121,22 @@
             const grid = document.getElementById('photo-grid');
             grid.innerHTML = '';
             const photos = await loadPhotosFromDB();
-            if(!photos || photos.length === 0) grid.innerHTML = '<div style="color:#888;">暂无照片</div>';
-            else {
+            if(!photos || photos.length === 0) {
+                grid.innerHTML = '<div style="color:#888;">暂无照片</div>';
+            } else {
                 photos.forEach((p) => {
-                    const div = document.createElement('div'); div.className = 'photo-item';
-                    const img = document.createElement('img'); img.className = 'photo-thumb';
+                    const div = document.createElement('div'); 
+                    div.className = 'photo-item';
+                    const img = document.createElement('img'); 
+                    img.className = 'photo-thumb';
                     img.src = p.data;
-                    const btn = document.createElement('div'); btn.className = 'delete-x'; btn.innerText = 'X';
+                    const btn = document.createElement('div'); 
+                    btn.className = 'delete-x'; 
+                    btn.innerText = 'X';
                     btn.onclick = () => confirmDelete(p.id, div);
-                    div.appendChild(img); div.appendChild(btn); grid.appendChild(div);
+                    div.appendChild(img); 
+                    div.appendChild(btn); 
+                    grid.appendChild(div);
                 });
             }
             modal.classList.remove('hidden');
@@ -874,19 +1146,25 @@
             deletePhotoFromDB(id);
             divElement.remove();
             const p = particleSystem.find(part => part.photoId === id);
-            if(p) { photoMeshGroup.remove(p.mesh); particleSystem.splice(particleSystem.indexOf(p), 1); }
+            if(p) { 
+                photoMeshGroup.remove(p.mesh); 
+                particleSystem.splice(particleSystem.indexOf(p), 1); 
+            }
         }
 
         window.clearAllPhotos = function() {
             if(confirm("确定要清空所有照片吗？")) {
                 clearPhotosDB();
-                particleSystem.filter(p => p.type === 'PHOTO').forEach(p => photoMeshGroup.remove(p.mesh));
+                particleSystem.filter(p => p.type === 'PHOTO')
+                    .forEach(p => photoMeshGroup.remove(p.mesh));
                 particleSystem = particleSystem.filter(p => p.type !== 'PHOTO');
                 window.openDeleteManager();
             }
         }
 
-        window.closeDeleteManager = function() { document.getElementById('delete-manager').classList.add('hidden'); }
+        window.closeDeleteManager = function() { 
+            document.getElementById('delete-manager').classList.add('hidden'); 
+        }
 
         function animate() {
             requestAnimationFrame(animate);
@@ -906,7 +1184,7 @@
                     STATE.rotation.y += 0.3 * dt;
                     STATE.rotation.x += (0 - STATE.rotation.x) * 2.0 * dt;
                 } else {
-                     STATE.rotation.y += 0.1 * dt; 
+                    STATE.rotation.y += 0.1 * dt; 
                 }
             }
 
